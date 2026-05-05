@@ -1,0 +1,111 @@
+services:
+
+  openldap:
+    image: osixia/openldap:latest
+    container_name: openldap
+    restart: unless-stopped
+    deploy:
+      resources:
+        limits:
+          memory: 128m
+          cpus: "0.3"
+        reservations:
+          memory: 64m
+    environment:
+      LDAP_ORGANISATION: "${LDAP_ORGANISATION}"
+      LDAP_DOMAIN: "${LDAP_DOMAIN}"
+      LDAP_ADMIN_PASSWORD: "${LDAP_ADMIN_PASSWORD}"
+    ports:
+      - "389:389"
+    volumes:
+      - openldap_data:/var/lib/ldap
+      - openldap_config:/etc/ldap/slapd.d
+
+  phpldapadmin:
+    image: osixia/phpldapadmin:latest
+    container_name: phpldapadmin
+    restart: unless-stopped
+    deploy:
+      resources:
+        limits:
+          memory: 64m
+          cpus: "0.2"
+        reservations:
+          memory: 32m
+    environment:
+      PHPLDAPADMIN_LDAP_HOSTS: "openldap"
+    ports:
+      - "8081:80"
+      - "8443:443"
+    depends_on:
+      - openldap
+
+  database:
+    image: postgres:16-alpine
+    container_name: postgres_db
+    restart: unless-stopped
+    deploy:
+      resources:
+        limits:
+          memory: 128m
+          cpus: "0.4"
+    environment:
+      POSTGRES_DB: "${POSTGRES_DB}"
+      POSTGRES_USER: "${POSTGRES_USER}"
+      POSTGRES_PASSWORD: "${POSTGRES_PASSWORD}"
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+      - ./postgres/pg_hba.conf:/etc/pg_hba.conf:ro
+    command: [ "postgres", "-c", "hba_file=/etc/pg_hba.conf" ]
+    depends_on:
+      - openldap
+      - phpldapadmin
+
+  grafana:
+    image: grafana/grafana-oss:latest
+    container_name: grafana_web
+    restart: unless-stopped
+    ports:
+      - "3000:3000"
+    environment:
+      - GF_AUTH_LDAP_ENABLED=true
+      - GF_AUTH_LDAP_CONFIG_FILE=/etc/grafana/ldap.toml
+    volumes:
+      - grafana_data:/var/lib/grafana
+      - ./grafana/ldap.toml:/etc/grafana/ldap.toml:ro
+      - ./grafana/provisioning:/etc/grafana/provisioning
+    depends_on:
+      - openldap
+      - prometheus
+
+  # --- PROMETHEUS ---
+  prometheus:
+    image: prom/prometheus:latest
+    container_name: prometheus
+    restart: unless-stopped
+    ports:
+      - "9090:9090"
+    volumes:
+      - ./prometheus/prometheus.yml:/etc/prometheus/prometheus.yml:ro
+      - prometheus_data:/prometheus
+    command:
+      - '--config.file=/etc/prometheus/prometheus.yml'
+    depends_on:
+      - postgres_exporter
+
+  # --- EXPORTER PARA POSTGRES ---
+  postgres_exporter:
+    image: prometheuscommunity/postgres-exporter:latest
+    container_name: postgres_exporter
+    restart: unless-stopped
+    environment:
+      DATA_SOURCE_NAME: "postgresql://${POSTGRES_USER}:${POSTGRES_PASSWORD}@database:5432/${POSTGRES_DB}?sslmode=disable"
+    depends_on:
+      - database
+
+volumes:
+  openldap_data:
+  openldap_config:
+  postgres_data:
+  grafana_data:
+  prometheus_data:

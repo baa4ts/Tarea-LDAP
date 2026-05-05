@@ -1,0 +1,40 @@
+# https://grafana.com/docs/grafana/latest/setup-grafana/configure-access/configure-authentication/ldap/
+[[servers]]
+host = "openldap"
+port = 389
+use_ssl = false
+start_tls = false
+bind_dn = "cn=admin,dc=corp,dc=local"
+bind_password = "12345678"
+
+
+# Que solo busque los usuarios de la OU Analytics
+search_filter = "(uid=%s)"
+search_base_dns = ["ou=analytics,dc=corp,dc=local"]
+
+# Busca grupos directamente sin necesitar memberOf
+group_search_filter = "(&(objectClass=groupOfNames)(member=uid=%s,ou=analytics,dc=corp,dc=local))"
+group_search_base_dns = ["ou=roles,dc=corp,dc=local"]
+group_search_filter_user_attribute = "uid"
+
+# Mapeo de atributos LDAP a Grafana
+[servers.attributes]
+name = "cn"
+surname = "sn"
+username = "uid"
+email = "mail"
+
+# Permisos para los usuario que esten en la OU de Analytics
+# https://grafana.com/docs/grafana/latest/setup-grafana/configure-access/configure-authentication/ldap/#group-mappings
+[[servers.group_mappings]]
+group_dn = "cn=grafana_admins,ou=roles,dc=corp,dc=local"
+org_role = "Admin"
+grafana_admin = true
+
+[[servers.group_mappings]]
+group_dn = "cn=grafana_editors,ou=roles,dc=corp,dc=local"
+org_role = "Editor"
+
+[[servers.group_mappings]]
+group_dn = "*"
+org_role = "Viewer"
